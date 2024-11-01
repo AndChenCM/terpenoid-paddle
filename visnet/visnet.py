@@ -7,7 +7,7 @@ import re
 from pgl.utils import op
 from pgl.message import Message
 
-from visnet_utils import \
+from .visnet_utils import \
 (
     AtomEncoder,
     BondEncoder,
@@ -16,7 +16,8 @@ from visnet_utils import \
     Sphere,
     VecLayerNorm
 )
-import visnet_output_modules
+from . import visnet_output_modules
+
 
 
 class ViS_Graph(pgl.Graph):
@@ -195,12 +196,16 @@ class ViSNetBlock(nn.Layer):
         
         # ViS-MP Layers
         for attn in self.vis_mp_layers:
+            
             dx, dvec = attn(vis_graph)
+            if paddle.isnan(dx).any() or paddle.isnan(dvec).any():
+                print("NaN values detected in dx or dvec")
+
             x = x + dx
             vec = vec + dvec
             vis_graph.node_feat['x'] = x
             vis_graph.node_feat['vec'] = vec
-
+        # import pdb; pdb.set_trace()    
         x = self.out_norm(x)
         vec = self.vec_out_norm(vec)
 
@@ -299,7 +304,7 @@ class ViS_MP(nn.Layer):
 
         vec1, vec2, vec3 = paddle.split(self.vec_proj(vec), 3, axis=-1)
         vec_dot = (vec1 * vec2).sum(axis=1)
-        
+        # import pdb; pdb.set_trace()
         def _send_func(src_feat, dst_feat, edge_feat):
             
             q_i = dst_feat["q"]
@@ -318,8 +323,9 @@ class ViS_MP(nn.Layer):
             )
             
             attn = (q_i * k_j * dk).sum(axis=-1)
-            attn = self.attn_activation(attn) * self.cutoff(r_ij).unsqueeze(1)
-
+            cutoff = self.cutoff(r_ij).unsqueeze(1)
+            attn = self.attn_activation(attn) 
+            v_j = v_j * cutoff.unsqueeze(2)
             v_j = v_j * dv
             v_j = (v_j * attn.unsqueeze(2)).reshape([-1, self.hidden_channels])
 

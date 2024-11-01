@@ -89,7 +89,7 @@ def mask_context_of_geognn_graph(
 class DownstreamCollateFn(object):
     def __init__(self, task_type='regr', is_inference=True):
         atom_names = ["atomic_num", "formal_charge", "degree", "chiral_tag", "total_numHs", "is_aromatic",
-                      "hybridization","atom_pos","explicit_valence", ]
+                      "hybridization","atom_pos","explicit_valence"]
         bond_names = ["bond_dir", "bond_type", "is_in_ring"]
         bond_float_names = ["bond_length"]
         bond_angle_float_names = ["bond_angle"]
@@ -112,7 +112,6 @@ class DownstreamCollateFn(object):
         is_extrapolated_list = []
         for data in data_list:
             compound_class_list.append(data['Label'])
-            #is_extrapolated_list.append(data['is_extrapolated'])
             data = data['Graph']
             ab_g = pgl.Graph(
                 num_nodes=len(data[self.atom_names[0]]),
@@ -135,7 +134,7 @@ class DownstreamCollateFn(object):
         self._flat_shapes(bond_angle_graph.node_feat)
         self._flat_shapes(bond_angle_graph.edge_feat)
 
-        return atom_bond_graph, bond_angle_graph, np.array(compound_class_list, dtype=np.float32), #np.array(is_extrapolated_list, dtype=np.float32)
+        return atom_bond_graph, bond_angle_graph, np.array(compound_class_list, dtype=np.float32)
 
 
 

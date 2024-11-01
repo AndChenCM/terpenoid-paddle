@@ -163,3 +163,5 @@ cython_debug/
 weight/*
 work/*
 *.ipynb
+*.csv
+pretrain_models/*

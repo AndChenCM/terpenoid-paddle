@@ -488,7 +488,7 @@ class Compound3DKit(object):
             res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs)
 
             res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
-            #new_mol = Chem.RemoveHs(new_mol)
+            # new_mol = Chem.RemoveHs(new_mol)
             index = np.argmin([x[1] for x in res])
             energy = res[index][1]
             conf = new_mol.GetConformer(id=int(index))

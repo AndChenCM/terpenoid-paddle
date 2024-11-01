@@ -3,19 +3,16 @@ from utils.inmemory_dataset import InMemoryDataset
 import pickle
 from sklearn.model_selection import train_test_split
 import numpy as np
-import random 
+
 import warnings
-import json
 import paddle
-from paddle import optimizer
-from sklearn import metrics
-from utils.gem_model import GeoGNNModel
 import paddle.nn as nn
 import pandas as pd
 from utils.to_graph import transfer_smiles_to_graph
 warnings.filterwarnings('ignore')
 
-import visnet
+from visnet import visnet
+from visnet import visnet_output_modules
 
 class GEMData_mmff(object):
     def __init__(self, path, label_name=None):
@@ -72,7 +69,7 @@ def get_data_loader(mode, batch_size=256):
 
         return train_dl, valid_dl
     elif mode == 'test':
-        data_list = pickle.load(open("work/test_2D_.pkl", 'rb'))
+        data_list = pickle.load(open("work/test_rdkit_3Dplus2D_wH.pkl", 'rb'))
 
         print(f'len test is {len(data_list)}')
 
@@ -80,32 +77,15 @@ def get_data_loader(mode, batch_size=256):
         test_dl = test.get_data_loader(batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
         return test_dl
 
-class GetLoss(nn.Layer):
-    def __init__(self, encoder, label_mean=0.0, label_std=1.0):
-        super(GetLoss, self).__init__()
-        self.encoder = encoder
-        self.label_mean = paddle.to_tensor(label_mean)
-        self.label_std = paddle.to_tensor(label_std)
-    def _get_scaled_label(self, x):
-        return (x - self.label_mean) / (self.label_std + 1e-5)
 
-    def _get_unscaled_pred(self, x):
-        return x * (self.label_std + 1e-5) + self.label_mean
-    
-    def forward(self, atom_bond_graph, bond_angle_graph):
-
-        x = self.encoder(atom_bond_graph.tensor())
-        #pred = self._get_unscaled_pred(x)
-        return x
-
-test_dl = get_data_loader(mode='test', batch_size=256)
+test_dl = get_data_loader(mode='test', batch_size=128)
 
 representation_model = visnet.ViSNetBlock(lmax=2,
         vecnorm_type='none',
         trainable_vecnorm=False,
         num_heads=8,
         num_layers=6,
-        hidden_channels=128,
+        hidden_channels=80,
         num_rbf=32,
         rbf_type="expnorm",
         trainable_rbf=False,
@@ -115,32 +95,28 @@ representation_model = visnet.ViSNetBlock(lmax=2,
         max_num_neighbors=32,)
    
    
-import visnet_output_modules
 output_model =  visnet_output_modules.EquivariantScalar(
-    hidden_channels=128, out_channels=1
+    hidden_channels=80, out_channels=1
 )
 
-visnet_model = visnet.ViSNet(
+model = visnet.ViSNet(
     representation_model,
     output_model,
     reduce_op="sum",
     mean=None,
     std=None,
 )
-#compound_encoder_config = json.load(open('model_configs/geognn_l8.json', 'r'))
-#encoder = GeoGNNModel(compound_encoder_config)
-#encoder.set_state_dict(paddle.load(f"weight/regr.pdparams"))
-model = GetLoss(encoder=visnet_model, label_mean=0, label_std=1)
-model.set_state_dict(paddle.load('/home/chenmingan/projects/paddle/prop_regr_jiangxinyu/weight/model_visnet_pre_zinc_50w_pre_train6.pkl'))
+
+model.set_state_dict(paddle.load('/home/chenmingan/workplace/paddle/terpenoid_perliminary/weight/model_visnet_pre_on_train_embed80_epoch49.pkl'))
 
 model.eval()
 y_pred = np.array([])
-for (atom_bond_graph, bond_angle_graph, compound_class) in test_dl:
-    output = model(atom_bond_graph, bond_angle_graph)
+for (atom_bond_graph, bond_angle_graph, _) in test_dl:
+    output = model(atom_bond_graph.tensor())
     y_pred = np.concatenate((y_pred, output[:, 0].cpu().numpy()))
 
 test_df = pd.read_csv('data/data285818/test.csv')
 test_df['pred'] = y_pred
-test_df.to_csv('test_model_visnet_pre_zinc_50w_pre_train6.csv', index=False)
+test_df.to_csv('visnet_pre_on_train_embed80_epoch49.csv', index=False)
 
     

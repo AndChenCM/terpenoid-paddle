@@ -1,4 +1,4 @@
-from utils.utils import DownstreamCollateFn, calc_parameter_size
+from utils.pt_utils import DownstreamCollateFn, calc_parameter_size
 from utils.inmemory_dataset import InMemoryDataset
 import pickle
 from sklearn.model_selection import train_test_split
@@ -81,45 +81,6 @@ def get_data_loader(mode, batch_size=256):
         test_dl = test.get_data_loader(batch_size=batch_size, shuffle=False)
         return test_dl
 
-class GetLoss(nn.Layer):
-    def __init__(self, encoder, label_mean=0.0, label_std=1.0):
-        super(GetLoss, self).__init__()
-        self.encoder = encoder
-        self.criterion = nn.CrossEntropyLoss()#nn.MSELoss()
-        self.label_mean = paddle.to_tensor(label_mean)
-        self.label_std = paddle.to_tensor(label_std)
-    
-    def _get_scaled_label(self, x):
-        return (x - self.label_mean) / (self.label_std + 1e-5)
-
-    def _get_unscaled_pred(self, x):
-        return x * (self.label_std + 1e-5) + self.label_mean
-    
-    def forward(self, atom_bond_graph, masked_atom_bond_graph, feed_dict):
-        #label_true = paddle.to_tensor(label_true, dtype=paddle.int32, place=paddle.CUDAPlace(0)).unsqueeze(axis=1)
-        x = self.encoder(atom_bond_graph.tensor(), masked_atom_bond_graph.tensor(), feed_dict)
-
-        #else:
-            # 没有掩码的情况下，正常计算损失
-        #    loss = self.criterion(x, label_true)
-
-        return x
-
-    '''def forward(self, atom_bond_graph, bond_angle_graph, label_true,):
-        label_true = paddle.to_tensor(label_true, dtype=paddle.float32, place=paddle.CUDAPlace(0)).unsqueeze(axis=1)
-        x = self.encoder(atom_bond_graph.tensor())
-        #x = self.mlp(graph_repr)
-
-        if self.label_mean != 0 or self.label_std != 1:
-            scaled_label = self._get_scaled_label(label_true)
-            loss = self.criterion(x, scaled_label)
-            pred = self._get_unscaled_pred(x)
-        else:
-            loss = self.criterion(x, label_true)
-            pred = x
-        
-        return pred, loss'''
-    
 def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch,label_mean,label_std):
     train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=batch_size) 
     
@@ -142,24 +103,20 @@ def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch,
        hidden_channels=384,out_channels=1
     )
 
-    visnet_model = visnet.ViSNet(
+    model = visnet.ViSNet(
         representation_model,
         output_model,
         reduce_op="sum",
         mean=None,
         std=None,
     )
-    #compound_encoder_config = json.load(open('model_configs/geognn_l8.json', 'r'))
-    #encoder = GeoGNNModel(compound_encoder_config)
-    #encoder.set_state_dict(paddle.load(f"weight/regr.pdparams"))
-    model = GetLoss(encoder=visnet_model,label_mean=label_mean,label_std=label_std)
+
     print("parameter size:", calc_parameter_size(model.parameters()))
 
     #model_path = '/home/chenmingan/projects/paddle/prop_regr_jiangxinyu/pre_visnet/weight/model_pre_zinc_50w0.pkl'
     #model.set_state_dict(paddle.load(model_path))
     #print('Load state_dict from %s' % model_path)
 
-    
     lr = optimizer.lr.CosineAnnealingDecay(learning_rate=lr, T_max=tmax)
     opt = optimizer.Adam(lr, parameters=model.parameters(), weight_decay=weight_decay)
    
