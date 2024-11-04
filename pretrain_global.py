@@ -15,6 +15,8 @@ from utils.to_graph import transfer_smiles_to_graph
 import pgl
 from visnet import visnet
 from visnet import visnet_output_modules
+import gc
+import os
 warnings.filterwarnings('ignore')
 
 
@@ -58,14 +60,14 @@ class GEMData_mmff(object):
 #label_std = label_stat['std']
 #data.to_data_list(save_name='zinc_sub_train', num_worker=40)
 
-def get_data_loader(mode, batch_size=256):
+def get_data_loader(mode, batch_size=128):
     collate_fn = DownstreamCollateFn()
     if mode == 'train':
-        data_list = pickle.load(open("/home/chenmingan/projects/paddle/prop_regr_jiangxinyu/work/train_2D.pkl", 'rb'))
+        data_list = pickle.load(open("work/train_semi_from_mol_exhaust.pkl", 'rb'))
         train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
         train, valid = InMemoryDataset(train), InMemoryDataset(valid)
 
-        print(f'len train is {len(train)}, len valid is {len(valid)}')
+        print(f'len train is {len(train)}, len valid is {len(valid)}', flush=True)
 
         train_dl = train.get_data_loader(batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
         valid_dl = valid.get_data_loader(batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
@@ -73,23 +75,41 @@ def get_data_loader(mode, batch_size=256):
 
         return train_dl, valid_dl
     elif mode == 'test':
-        data_list = pickle.load(open("work/test_2D.pkl", 'rb'))
+        return ValueError('This is a pretrain script')
 
-        print(f'len test is {len(data_list)}')
+class DownstreamVisNet(nn.Layer):
+    def __init__(
+            self,
+            representation_model,
+            output_model
+    ):
+        super().__init__()
+        self.representation_model = representation_model
+        self.output_model = output_model
+        self.reset_parameters()
 
-        test = InMemoryDataset(data_list)
-        test_dl = test.get_data_loader(batch_size=batch_size, shuffle=False)
-        return test_dl
+    def reset_parameters(self):
+        self.representation_model.reset_parameters()
+        self.output_model.reset_parameters()
 
-def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch,label_mean,label_std):
-    train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=batch_size) 
+    def forward(self, atom_bond_graph: pgl.Graph, feed_dict):
+
+        x_orig, v_orig = self.representation_model(
+                atom_bond_graph)
+
+        loss = self.output_model.pre_reduce(x_orig,v_orig,feed_dict)
+        
+        return loss
     
+def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch):
+    train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=batch_size) 
+    os.makedirs(f"pretrain_weight/{model_version}", exist_ok=True)
     representation_model = visnet.ViSNetBlock(lmax=2,
         vecnorm_type='none',
         trainable_vecnorm=False,
         num_heads=8,
         num_layers=6,
-        hidden_channels=128,
+        hidden_channels=80,
         num_rbf=32,
         rbf_type="expnorm",
         trainable_rbf=False,
@@ -100,18 +120,15 @@ def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch,
    
    
     output_model =  visnet_output_modules.Pretrain_Output(
-       hidden_channels=384,out_channels=1
+       hidden_channels=240,out_channels=1
     )
 
-    model = visnet.ViSNet(
+    model = DownstreamVisNet(
         representation_model,
-        output_model,
-        reduce_op="sum",
-        mean=None,
-        std=None,
+        output_model
     )
 
-    print("parameter size:", calc_parameter_size(model.parameters()))
+    print("parameter size:", calc_parameter_size(model.parameters()), flush=True)
 
     #model_path = '/home/chenmingan/projects/paddle/prop_regr_jiangxinyu/pre_visnet/weight/model_pre_zinc_50w0.pkl'
     #model.set_state_dict(paddle.load(model_path))
@@ -124,22 +141,16 @@ def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch,
     best_epoch = 0
     best_train_metric = {}
     best_valid_metric = {}
-    import csv
-    csv_file = "training_metrics_pre_zinc_20w.csv"
-    with open(csv_file, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['epoch', 'train_loss', 'val_loss'])  # 写入表头
-    import logging
-    from tqdm import tqdm
+
     for epoch in range(max_epoch):
         model.train()
-        for (atom_bond_graph, masked_atom_bond_graph, feed_dict) in tqdm(train_data_loader):
+        for batch_idx, (atom_bond_graph, _, feed_dict) in enumerate(train_data_loader):
             
-            loss,_,_ = model(atom_bond_graph, masked_atom_bond_graph, feed_dict)
-            #print(loss)
-             # 每隔100个批次打印一次损失
-            #if batch_idx % 100 == 0:
-            #    print(f"Epoch [{epoch + 1}/{max_epoch}], Batch [{batch_idx}], Loss: {loss.numpy()}")
+            loss = model(atom_bond_graph.tensor(), feed_dict)
+            # print(loss, flush=True)
+            #  每隔100个批次打印一次损失
+            if batch_idx % 100 == 0:
+               print(f"Epoch [{epoch + 1}/{max_epoch}], Batch [{batch_idx}], Loss: {loss.numpy()}", flush=True)
             loss.backward() 
 
             opt.step()
@@ -148,30 +159,27 @@ def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch,
         lr.step() 
 
         # 评估模型在训练集、验证集的表现
-        train_metric = evaluate(model, train_data_loader,label_mean,label_std)
-        valid_metric = evaluate(model, valid_data_loader,label_mean,label_std)
+        train_metric = evaluate(model, train_data_loader)
+        valid_metric = evaluate(model, valid_data_loader)
 
         score = valid_metric
+
         
-        paddle.save(model.state_dict(), "weight/"+model_version+f'{epoch}'+".pkl")
+        paddle.save(model.state_dict(), f"pretrain_weight/{model_version}/"+model_version+f'{epoch}'+".pkl")
         if score < best_score:
             # 保存score最大时的模型权重
-            paddle.save(model.state_dict(), "weight/"+model_version+".pkl")
+            paddle.save(model.state_dict(), f"pretrain_weight/{model_version}/"+model_version+"best.pkl")
             best_score = score
             best_epoch = epoch
             best_train_metric = train_metric
             best_valid_metric = valid_metric
-            
-        with open(csv_file, mode='a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([epoch, train_metric, valid_metric])
 
-        print('epoch', epoch)
-        print('train', train_metric)
-        print('valid', valid_metric)
-        print(f'current_best_score: {best_score:.4f}, best_epoch: {best_epoch}')
-        print('=================================================')
-
+        print('epoch', epoch, flush=True)
+        print('train', train_metric, flush=True)
+        print('valid', valid_metric, flush=True)
+        print(f'current_best_score: {best_score:.4f}, best_epoch: {best_epoch}', flush=True)
+        print('=================================================', flush=True)
+        gc.collect()
         if epoch > best_epoch + max_bearable_epoch or epoch == max_epoch - 1:
             print(f"model_{model_version} is Done!!")
             print('train')
@@ -182,24 +190,18 @@ def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch,
             break
 
 
-def evaluate(model, dataloader,label_mean,label_std):
+def evaluate(model, dataloader):
     """评估模型"""
     model.eval()
-    pred_list=[]
-    label_list=[]
-    for (atom_bond_graph, masked_atom_bond_graph, feed_dict) in dataloader:
-        _,pred,label= model(atom_bond_graph, masked_atom_bond_graph, feed_dict)
+    loss_list=[]
 
-        preds_cpu = pred.cpu().numpy().flatten().astype(np.float32)
-        labels_cpu = label.cpu().numpy().flatten().astype(np.float32)
+    for (atom_bond_graph, _, feed_dict) in dataloader:
+        loss = model(atom_bond_graph.tensor(), feed_dict)
 
-        pred_list.append(preds_cpu)
-        label_list.append(labels_cpu)
-    #print(pred_list)
-    rmse = np.sqrt(metrics.mean_squared_error(np.concatenate(pred_list),np.concatenate(label_list)))
-    #r2 = metrics.r2_score(np.concatenate(pred_list),np.concatenate(label_list))
-        
-    return np.mean(rmse)
+        loss = loss.cpu().numpy().flatten().astype(np.float32)
+        loss_list.append(loss)
+       
+    return np.mean(loss_list)
 # 开始训练
 # 固定随机种子
 SEED = 42
@@ -208,13 +210,13 @@ np.random.seed(SEED)
 random.seed(SEED)
 
 batch_size = 32          
-lr = 1e-4
+lr = 1e-3
 tmax = 15
 weight_decay = 1e-5
-max_bearable_epoch = 100
-max_epoch = 1000
+max_bearable_epoch = 5
+max_epoch = 50
 
-trial('model_pre_zinc_50w_pre_train', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch,0,1)
+trial('visnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaust', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
 
 
 

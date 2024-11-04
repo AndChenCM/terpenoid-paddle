@@ -3,7 +3,8 @@ import paddle.nn as nn
 import pgl
 import numpy as np
 
-
+import sys
+sys.path.insert(0, '/home/chenmingan/workplace/paddle/terpenoid-paddle/env/')
 from pahelix.networks.gnn_block import GIN
 from .compound_encoder import AtomEmbedding, BondEmbedding, BondFloatRBF, BondAngleFloatRBF
 from pahelix.networks.gnn_block import MeanPool, GraphNorm

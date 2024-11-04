@@ -18,12 +18,13 @@
 """
 import os
 from collections import OrderedDict
+from copy import deepcopy
 
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdchem
-from openbabel import openbabel
+# from openbabel import openbabel
 from .compound_constants import DAY_LIGHT_FG_SMARTS_LIST
 
 
@@ -404,105 +405,91 @@ class Compound3DKit(object):
             pos = conf.GetAtomPosition(i)
             atom_poses.append([pos.x, pos.y, pos.z])
         return atom_poses
-    '''
-    @staticmethod
-    def get_MMFF_atom_poses(mol, numConfs=None, return_energy=False):
-        """Generate a low energy structure using RDKit, with Open Babel as fallback, and 2D coordinates as the last resort."""
-        try:
-            new_mol = Chem.AddHs(mol)
-            res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, randomSeed=42)
-            res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
 
-            if not res or all(x[0] for x in res):  # Check if RDKit failed to generate any viable conformations
-                raise ValueError("RDKit failed to generate viable conformations")
-            #new_mol = Chem.RemoveHs(new_mol)
-            # Select the lowest energy conformation
-            index = np.argmin([x[1] for x in res if x[0] == 0])
-            energy = res[index][1]
-            conf = new_mol.GetConformer(id=int(index))
-        except Exception as e:
-            print("RDKit failed, using Open Babel: ", str(e))
-            # Convert RDKit mol to Open Babel mol
-            obConversion = openbabel.OBConversion()
-            obConversion.SetInAndOutFormats("smi", "sdf")
-            obMol = openbabel.OBMol()
-            obConversion.ReadString(obMol, Chem.MolToSmiles(mol))
-            obMol.AddHydrogens()
-            builder = openbabel.OBBuilder()
-            builder.Build(obMol)
-            forcefield = openbabel.OBForceField.FindForceField('mmff94')
-            forcefield.Setup(obMol)
-            cs = openbabel.OBConformerSearch()
-            cs.Setup(obMol, numConfs)
-            cs.Search()
-            cs.GetConformers(obMol)
-            best_conformer = None
-            min_energy = float('inf')
-            for c in range(obMol.NumConformers()):
-                obMol.SetConformer(c)
-                forcefield.SetCoordinates(obMol)
-                forcefield.ConjugateGradients(250, 1.0e-4)
-                forcefield.GetCoordinates(obMol)
-
-                sdf_output = obConversion.WriteString(obMol)
-
-                sdf_reader = Chem.SDMolSupplier()
-                sdf_reader.SetData(sdf_output, removeHs=False)
-                rdkit_mol = sdf_reader[0] if sdf_reader[0] else None
-
-                if rdkit_mol:
-                    # Optimize the current conformer using RDKit
-                    mmff_props = AllChem.MMFFGetMoleculeProperties(rdkit_mol)
-                    if mmff_props:
-                        ff = AllChem.MMFFGetMoleculeForceField(rdkit_mol, mmff_props)
-                        ff.Initialize()
-                        ff.Minimize()
-                        energy = ff.CalcEnergy()
-                        if energy < min_energy:
-                            min_energy = energy
-                            best_conformer = rdkit_mol
-
-            new_mol = best_conformer
-            #new_mol = Chem.RemoveHs(new_mol)
-            conf = new_mol.GetConformer()
-            energy = min_energy
-
-        if not new_mol.GetNumConformers():  # Check if no 3D conformer is available
-            print("Both RDKit and Open Babel failed, using 2D coordinates.")
-            new_mol = mol
-            AllChem.Compute2DCoords(new_mol)
-            conf = new_mol.GetConformer()
-            energy = 0
-
-        atom_poses = Compound3DKit.get_atom_poses(new_mol, conf)
-        if return_energy:
-            return new_mol, atom_poses, energy
-        else:
-            return new_mol, atom_poses'''
     
-    @staticmethod
-    def get_MMFF_atom_poses(mol, numConfs=None, return_energy=False):
-        """the atoms of mol will be changed in some cases."""
-        try:
-            new_mol = Chem.AddHs(mol)
-            res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs)
+    # @staticmethod
+    # def get_MMFF_atom_poses(mol, numConfs=None, return_energy=False):
+    #     """the atoms of mol will be changed in some cases."""
+    #     try:
+    #         new_mol = Chem.AddHs(mol)
+    #         res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs)
 
-            res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
-            # new_mol = Chem.RemoveHs(new_mol)
-            index = np.argmin([x[1] for x in res])
-            energy = res[index][1]
-            conf = new_mol.GetConformer(id=int(index))
-        except:
-            new_mol = mol
-            AllChem.Compute2DCoords(new_mol)
-            energy = 0
+    #         res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
+    #         # new_mol = Chem.RemoveHs(new_mol)
+    #         index = np.argmin([x[1] for x in res])
+    #         energy = res[index][1]
+    #         conf = new_mol.GetConformer(id=int(index))
+    #     except:
+    #         new_mol = mol
+    #         AllChem.Compute2DCoords(new_mol)
+    #         energy = 0
+    #         conf = new_mol.GetConformer()
+
+    #     atom_poses = Compound3DKit.get_atom_poses(new_mol, conf)
+    #     if return_energy:
+    #         return new_mol, atom_poses, energy
+    #     else:
+    #         return new_mol, atom_poses
+    @staticmethod
+    def get_MMFF_atom_poses(mol, numConfs=10, return_energy=False):
+        """the atoms of mol will be changed in some cases."""
+
+        all_z_zero = True
+        for atom in mol.GetAtoms():
+            pos = mol.GetConformer().GetAtomPosition(atom.GetIdx())
+            if pos.z != 0:
+                all_z_zero = False
+        if not all_z_zero:
+            new_mol = deepcopy(mol)
+            new_mol = Chem.AddHs(new_mol, addCoords=True)
+            opt = AllChem.MMFFOptimizeMolecule(new_mol)
             conf = new_mol.GetConformer()
+        else:
+            try:
+                new_mol = deepcopy(mol)
+                smiles = Chem.MolToSmiles(new_mol)
+                new_mol = Chem.MolFromSmiles(smiles)
+                new_mol = Chem.AddHs(new_mol)
+                new_mol = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, useRandomCoords=True)
+                res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
+                index = np.argmin([x[1] for x in res])
+                energy = res[index][1]
+                conf = new_mol.GetConformer(id=int(index))
+            except:
+                try:
+                    new_mol = deepcopy(mol)
+                    smiles = Chem.MolToSmiles(new_mol)
+                    new_mol = Chem.MolFromSmiles(smiles)
+                    new_mol = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, useRandomCoords=True)
+                    new_mol = Chem.AddHs(new_mol, addCoords=True)
+                    res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
+                    index = np.argmin([x[1] for x in res])
+                    energy = res[index][1]
+                    conf = new_mol.GetConformer(id=int(index))
+                except:
+                    try:
+                        new_mol = deepcopy(mol)
+                        smiles = Chem.MolToSmiles(new_mol)
+                        new_mol = Chem.MolFromSmiles(smiles)
+                        new_mol = Chem.AddHs(new_mol)
+                        new_mol = AllChem.EmbedMolecule(new_mol, useRandomCoords=True)
+                        conf = new_mol.GetConformer()
+                    except:
+                        try:
+                            new_mol = deepcopy(mol)
+                            smiles = Chem.MolToSmiles(new_mol)
+                            new_mol = Chem.MolFromSmiles(smiles)
+                            new_mol = AllChem.EmbedMolecule(new_mol, useRandomCoords=True)
+                            new_mol = Chem.AddHs(new_mol, addCoords=True)
+                            conf = new_mol.GetConformer()
+                        except:
+                            new_mol = deepcopy(mol)
+                            conf = new_mol.GetConformer()
 
         atom_poses = Compound3DKit.get_atom_poses(new_mol, conf)
-        if return_energy:
-            return new_mol, atom_poses, energy
-        else:
-            return new_mol, atom_poses
+        
+        return new_mol, atom_poses
+
 
     @staticmethod
     def get_2d_atom_poses(mol):

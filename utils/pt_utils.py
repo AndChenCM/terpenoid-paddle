@@ -95,7 +95,7 @@ class DownstreamCollateFn(object):
         bond_names = ["bond_dir", "bond_type", "is_in_ring"]
         bond_float_names = ["bond_length"]
         bond_angle_float_names = ["bond_angle"]
-        pretrain_tasks=['Cm']
+        pretrain_tasks=['Bar']
         mask_ratio = 0.1
         Cm_vocab = 1000
         self.atom_names = atom_names

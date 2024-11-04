@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 
 import paddle
 import paddle.nn as nn
+import numpy as np
 
 __all__ = ["Scalar"]
 
@@ -140,27 +141,12 @@ class Pretrain_Output(OutputModel):
         return loss
     
     def _get_Bar_loss(self, feed_dict, node_repr):
-        import numpy as np
+
         
         loss = self.Bar_loss(node_repr, paddle.to_tensor(feed_dict['Ba_bond_angle'] / np.pi))
-        #loss = self.Blr_loss(node_repr, paddle.to_tensor(feed_dict['atomic_charge']).unsqueeze(1))
-        return loss, node_repr, paddle.to_tensor(feed_dict['Ba_bond_angle'] / np.pi)
+        return loss
     
-    def pre_reduce(self, x_orig,v_orig, x_masked, v_masked,feed_dict):
-        
-        #x_orig_node_i_repr = paddle.gather(x_orig, paddle.to_tensor(feed_dict['Bl_node_i']))
-        #x_orig_node_j_repr = paddle.gather(x_orig, paddle.to_tensor(feed_dict['Bl_node_j']))
-        #x_orig_node_ij_repr = paddle.concat([x_orig_node_i_repr, x_orig_node_j_repr], 1)
-        #v_orig_node_i_repr = paddle.gather(v_orig, paddle.to_tensor(feed_dict['Bl_node_i']))
-        #v_orig_node_j_repr = paddle.gather(v_orig, paddle.to_tensor(feed_dict['Bl_node_j']))
-        #v_orig_node_ij_repr = paddle.concat([v_orig_node_i_repr, v_orig_node_j_repr], 2)
-
-        #x_masked_node_i_repr = paddle.gather(x_masked, paddle.to_tensor(feed_dict['Bl_node_i']))
-        #x_masked_node_j_repr = paddle.gather(x_masked, paddle.to_tensor(feed_dict['Bl_node_j']))
-        #x_masked_node_ij_repr = paddle.concat([x_masked_node_i_repr, x_masked_node_j_repr], 1)
-        #v_masked_node_i_repr = paddle.gather(v_masked, paddle.to_tensor(feed_dict['Bl_node_i']))
-        #v_masked_node_j_repr = paddle.gather(v_masked, paddle.to_tensor(feed_dict['Bl_node_j']))
-        #v_masked_node_ij_repr = paddle.concat([v_masked_node_i_repr,v_masked_node_j_repr], 2)
+    def pre_reduce(self, x_orig,v_orig,feed_dict):
 
         
         x_orig_node_i_repr = paddle.gather(x_orig, paddle.to_tensor(feed_dict['Ba_node_i']))
@@ -173,48 +159,10 @@ class Pretrain_Output(OutputModel):
         v_orig_node_ijk_repr = paddle.concat([v_orig_node_i_repr, v_orig_node_j_repr, v_orig_node_k_repr], 2)
         
         for layer in self.output_network:
-    
             x_orig_node_ijk_repr, v_orig_node_ijk_repr = layer(x_orig_node_ijk_repr, v_orig_node_ijk_repr)
-           
         
-        #loss, pred , label = self._get_Bar_loss(feed_dict, x_orig)
-       
-        #for layer in self.output_network:
-            #x_orig_node_ij_repr, v_orig_node_ij_repr = layer(x_orig_node_ij_repr, v_orig_node_ij_repr)
-            #x_masked_node_ij_repr, v_masked_node_ij_repr = layer(x_masked_node_ij_repr, v_masked_node_ij_repr)
-        
-        loss, pred, label = self._get_Bar_loss(feed_dict, x_orig_node_ijk_repr)
+        loss = self._get_Bar_loss(feed_dict, x_orig_node_ijk_repr)
 
-        pred = pred.cpu()
-        label = label.cpu()
-        #loss += self._get_Blr_loss(feed_dict, x_masked_node_ij_repr)
-        #loss = self._get_Blr_loss(feed_dict, x_orig_node_ij_repr)
-        return loss, pred, label 
-        
+        return loss  
     
-'''class Pretrain_Output(OutputModel):
-    def __init__(self, hidden_channels, out_channels, activation="silu", allow_prior_model=True):
-        super().__init__(allow_prior_model=allow_prior_model)
-        self.Cm_vocab = 2400
-        self.Cm_linear = nn.Linear(hidden_channels, self.Cm_vocab + 3)
-        self.Cm_loss = nn.CrossEntropyLoss()
-        self.reset_parameters()
-
-    def _get_Cm_loss(self, feed_dict, node_repr):
-        masked_node_repr = paddle.gather(node_repr, paddle.to_tensor(feed_dict['Cm_node_i'], dtype='int64'))
-        logits = self.Cm_linear(masked_node_repr)
-        loss = self.Cm_loss(logits, paddle.to_tensor(feed_dict['Cm_context_id'], dtype='int64'))
-        return loss
-    
-    def reset_parameters(self):
-        pass
-        # 直接调用reset_parameters方法
-        #self.Cm_linear.reset_parameters()
-
-    def pre_reduce(self, x_orig, x_masked, feed_dict):
-       
-        loss = self._get_Cm_loss(feed_dict, x_orig)
-        loss += self._get_Cm_loss(feed_dict, x_masked)
-        
-        return loss'''
 

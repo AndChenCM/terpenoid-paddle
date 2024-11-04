@@ -165,3 +165,7 @@ work/*
 *.ipynb
 *.csv
 pretrain_models/*
+pretrain_weight/*
+logs/*
+data/*
+PGL-2.2.5/

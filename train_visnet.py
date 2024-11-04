@@ -10,18 +10,23 @@ from paddle import optimizer
 from sklearn import metrics
 import paddle.nn as nn
 import pandas as pd
-from utils.to_graph import transfer_smiles_to_graph
+from rdkit import Chem
+from utils.to_graph import transfer_smiles_to_graph, transfer_mol_to_graph
 import pgl
 from visnet import visnet
 from visnet import visnet_output_modules
-
+import sys
+import os
+sys.path.insert(0, '/home/chenmingan/workplace/paddle/terpenoid-paddle/env')
+import pahelix
 warnings.filterwarnings('ignore')
 
 
 class GEMData_mmff(object):
-    def __init__(self, path, label_name=None):
+    def __init__(self, path, sdf_path, label_name=None):
         self.df = pd.read_csv(path)
         self.smiles = self.df['smiles'].values
+        self.mols = Chem.SDMolSupplier(sdf_path)
 
         if label_name is not None:
             self.label = self.df[label_name].values
@@ -29,8 +34,8 @@ class GEMData_mmff(object):
             self.label = np.zeros(len(self.df))
 
     
-    def to_data_list(self, save_name, num_worker=20):
-        smiles_to_graph_dict = transfer_smiles_to_graph(self.smiles, num_worker)
+    def to_data_list(self, save_name, num_worker=4):
+        smiles_to_graph_dict = transfer_mol_to_graph(self.mols, self.smiles, num_worker)
         data_list = []
         for i in range(len(self.smiles)):
             data_item = {}
@@ -50,17 +55,17 @@ class GEMData_mmff(object):
             'N': len(self.label)
         }
 
-data = GEMData_mmff('data/data285818/train.csv', label_name='label')
-label_stat = data.get_label_stat()
-print(f'label_stat: {label_stat}')
-label_mean = label_stat['mean']
-label_std = label_stat['std']
-#data.to_data_list(save_name='train', num_worker=20)
+# data = GEMData_mmff('data/train.csv', 'data/train.sdf', label_name='label')
+# label_stat = data.get_label_stat()
+# print(f'label_stat: {label_stat}')
+# label_mean = label_stat['mean']
+# label_std = label_stat['std']
+# data.to_data_list(save_name='train_semi_from_mol_exhaust', num_worker=40)
 
 def get_data_loader(mode, batch_size=256):
     collate_fn = DownstreamCollateFn()
     if mode == 'train':
-        data_list = pickle.load(open("work/train_rdkit_3Dplus2D_wH.pkl", 'rb'))
+        data_list = pickle.load(open("work/train_semi_from_mol_exhaust.pkl", 'rb'))
         train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
         train, valid = InMemoryDataset(train), InMemoryDataset(valid)
 
@@ -135,7 +140,7 @@ def trial(model_version, batch_size, lr,  tmax, weight_decay, max_bearable_epoch
 
     print("parameter size:", calc_parameter_size(model.parameters()), flush=True)
 
-    model_path = 'pretrain_models/visnet-pretrain-on-train-all-geo-80-wH-allmask/epoch10.pdparams'
+    model_path = 'pretrain_weight/visnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaustvisnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaust1.pkl'
     model.set_state_dict(paddle.load(model_path))
     print('Load state_dict from %s' % model_path, flush=True)
 
@@ -205,9 +210,9 @@ lr = 1e-4
 tmax = 15
 weight_decay = 1e-5
 max_bearable_epoch = 100
-max_epoch = 10000
+max_epoch = 1000
 
-trial('model_visnet_pre_on_train_embed80_epoch10_wH', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
+trial('visnet_hs80_l6_rbf32_lm2_bs32_lr1e-4_mol_exhaust_ft_withep1', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
 
 
 

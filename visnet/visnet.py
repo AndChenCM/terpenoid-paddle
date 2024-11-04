@@ -323,9 +323,8 @@ class ViS_MP(nn.Layer):
             )
             
             attn = (q_i * k_j * dk).sum(axis=-1)
-            cutoff = self.cutoff(r_ij).unsqueeze(1)
-            attn = self.attn_activation(attn) 
-            v_j = v_j * cutoff.unsqueeze(2)
+            attn = self.attn_activation(attn) * self.cutoff(r_ij).unsqueeze(1)
+
             v_j = v_j * dv
             v_j = (v_j * attn.unsqueeze(2)).reshape([-1, self.hidden_channels])
 

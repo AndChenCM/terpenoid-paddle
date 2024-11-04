@@ -73,7 +73,8 @@ def transfer_mol_to_graph_(mols, smiles):
             print(index, ':', round(index/n*100, 2), '%', smi)
         mutex.release()
         try:
-            mol_graph = mol_to_geognn_graph_data_raw3d(mol)
+            # mol_graph = mol_to_geognn_graph_data_raw3d(mol)
+            mol_graph = mol_to_geognn_graph_data_MMFF3d(mol)
         except:
             print("Invalid smiles!", smi)
             continue

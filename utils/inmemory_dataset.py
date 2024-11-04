@@ -4,7 +4,8 @@ from os.path import join, exists
 import numpy as np
 
 from pgl.utils.data import Dataloader
-
+import sys
+sys.path.insert(0, '/home/chenmingan/workplace/paddle/terpenoid-paddle/env/')
 from pahelix.utils.data_utils import save_data_list_to_npz, load_npz_to_data_list
 from pahelix.utils.basic_utils import mp_pool_map
 
