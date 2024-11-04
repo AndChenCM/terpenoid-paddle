@@ -1,4 +1,6 @@
 from threading import Thread, Lock
+from rdkit import rdBase
+rdBase.DisableLog('rdApp.warning')
 from rdkit.Chem import AllChem
 from rdkit import Chem
 from .compound_tools import mol_to_geognn_graph_data_raw3d, mol_to_geognn_graph_data_MMFF3d

@@ -10,6 +10,8 @@ from paddle import optimizer
 from sklearn import metrics
 import paddle.nn as nn
 import pandas as pd
+from rdkit import rdBase
+rdBase.DisableLog('rdApp.warning')
 from rdkit import Chem
 from utils.to_graph import transfer_smiles_to_graph, transfer_mol_to_graph
 import pgl
@@ -55,12 +57,12 @@ class GEMData_mmff(object):
             'N': len(self.label)
         }
 
-# data = GEMData_mmff('data/train.csv', 'data/train.sdf', label_name='label')
+data = GEMData_mmff('data/train.csv', 'data/train.sdf', label_name='label')
 # label_stat = data.get_label_stat()
 # print(f'label_stat: {label_stat}')
 # label_mean = label_stat['mean']
 # label_std = label_stat['std']
-# data.to_data_list(save_name='train_semi_from_mol_exhaust', num_worker=40)
+data.to_data_list(save_name='train_semi_from_mol_exhaust', num_worker=40)
 
 def get_data_loader(mode, batch_size=256):
     collate_fn = DownstreamCollateFn()
@@ -140,9 +142,9 @@ def trial(model_version, batch_size, lr,  tmax, weight_decay, max_bearable_epoch
 
     print("parameter size:", calc_parameter_size(model.parameters()), flush=True)
 
-    model_path = 'pretrain_weight/visnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaustvisnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaust1.pkl'
-    model.set_state_dict(paddle.load(model_path))
-    print('Load state_dict from %s' % model_path, flush=True)
+    # model_path = 'pretrain_weight/visnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaustvisnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaust1.pkl'
+    # model.set_state_dict(paddle.load(model_path))
+    # print('Load state_dict from %s' % model_path, flush=True)
 
     lr = optimizer.lr.CosineAnnealingDecay(learning_rate=lr, T_max=tmax)
     opt = optimizer.Adam(lr, parameters=model.parameters(), weight_decay=weight_decay)
@@ -209,10 +211,10 @@ batch_size = 32
 lr = 1e-4
 tmax = 15
 weight_decay = 1e-5
-max_bearable_epoch = 100
+max_bearable_epoch = 50
 max_epoch = 1000
 
-trial('visnet_hs80_l6_rbf32_lm2_bs32_lr1e-4_mol_exhaust_ft_withep1', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
+trial('visnet_hs80_l6_rbf32_lm2_bs32_lr1e-4_mol_exhaust_scratch', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
 
 
 

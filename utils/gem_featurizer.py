@@ -21,6 +21,8 @@
 import numpy as np
 from copy import deepcopy
 import pgl
+from rdkit import rdBase
+rdBase.DisableLog('rdApp.warning')
 from rdkit.Chem import AllChem
 
 from sklearn.metrics import pairwise_distances

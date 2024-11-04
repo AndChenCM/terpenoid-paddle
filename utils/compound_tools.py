@@ -21,6 +21,8 @@ from collections import OrderedDict
 from copy import deepcopy
 
 import numpy as np
+from rdkit import rdBase
+rdBase.DisableLog('rdApp.warning')
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdchem
@@ -433,7 +435,7 @@ class Compound3DKit(object):
     @staticmethod
     def get_MMFF_atom_poses(mol, numConfs=10, return_energy=False):
         """the atoms of mol will be changed in some cases."""
-
+        # firstly, add h and optimize the 3D coordinates
         all_z_zero = True
         for atom in mol.GetAtoms():
             pos = mol.GetConformer().GetAtomPosition(atom.GetIdx())
@@ -446,45 +448,38 @@ class Compound3DKit(object):
             conf = new_mol.GetConformer()
         else:
             try:
+                #secondly, embed the mol with 2d coords before add hs, then optimize
                 new_mol = deepcopy(mol)
                 smiles = Chem.MolToSmiles(new_mol)
                 new_mol = Chem.MolFromSmiles(smiles)
-                new_mol = Chem.AddHs(new_mol)
-                new_mol = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, useRandomCoords=True)
+                new_mol = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs)
+                new_mol = Chem.AddHs(new_mol, addCoords=True)
                 res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
                 index = np.argmin([x[1] for x in res])
                 energy = res[index][1]
                 conf = new_mol.GetConformer(id=int(index))
             except:
                 try:
+                    #thirdly, embed without optimize after add H
                     new_mol = deepcopy(mol)
                     smiles = Chem.MolToSmiles(new_mol)
                     new_mol = Chem.MolFromSmiles(smiles)
-                    new_mol = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, useRandomCoords=True)
-                    new_mol = Chem.AddHs(new_mol, addCoords=True)
-                    res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
-                    index = np.argmin([x[1] for x in res])
-                    energy = res[index][1]
-                    conf = new_mol.GetConformer(id=int(index))
+                    new_mol = Chem.AddHs(new_mol)
+                    new_mol = AllChem.EmbedMolecule(new_mol)
+                    conf = new_mol.GetConformer()
                 except:
                     try:
+                        #fourthly, embed without optimize before add H
                         new_mol = deepcopy(mol)
                         smiles = Chem.MolToSmiles(new_mol)
                         new_mol = Chem.MolFromSmiles(smiles)
-                        new_mol = Chem.AddHs(new_mol)
-                        new_mol = AllChem.EmbedMolecule(new_mol, useRandomCoords=True)
+                        new_mol = AllChem.EmbedMolecule(new_mol)
+                        new_mol = Chem.AddHs(new_mol, addCoords=True)
                         conf = new_mol.GetConformer()
                     except:
-                        try:
-                            new_mol = deepcopy(mol)
-                            smiles = Chem.MolToSmiles(new_mol)
-                            new_mol = Chem.MolFromSmiles(smiles)
-                            new_mol = AllChem.EmbedMolecule(new_mol, useRandomCoords=True)
-                            new_mol = Chem.AddHs(new_mol, addCoords=True)
-                            conf = new_mol.GetConformer()
-                        except:
-                            new_mol = deepcopy(mol)
-                            conf = new_mol.GetConformer()
+                        # last approach, use 2D coords
+                        new_mol = deepcopy(mol)
+                        conf = new_mol.GetConformer()
 
         atom_poses = Compound3DKit.get_atom_poses(new_mol, conf)
         
