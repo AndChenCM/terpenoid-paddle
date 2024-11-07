@@ -15,6 +15,8 @@ mamba install cudatoolkit==11.8 -c conda-forge
 mamba install -c nvidia/label/cuda-11.8.0 cuda-nvcc cuda-libraries-dev cudnn
 pip install paddlepaddle-gpu==2.5.2 -f https://www.paddlepaddle.org.cn/whl/linux/mkl/avx/stable.html
 pip install seaborn scikit-learn==1.3.1 scipy numpy==1.26.0 protobuf "urllib3<2.0" ml_collections tensorboardX
+pip install cython
 wget https://github.com/PaddlePaddle/PGL/archive/refs/tags/2.2.5.zip
     # run_command('unzip -n PGL-2.2.5.zip')
     # run_command('cd PGL-2.2.5/ && python setup.py build && python setup.py install && cd ../')
+#使用时把paddle环境里的lib export到LD_LIBRARY_PATH里

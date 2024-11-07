@@ -63,7 +63,9 @@ class GEMData_mmff(object):
 def get_data_loader(mode, batch_size=128):
     collate_fn = DownstreamCollateFn()
     if mode == 'train':
-        data_list = pickle.load(open("work/train_semi_from_mol_exhaust.pkl", 'rb'))
+        data_list0 = pickle.load(open("work/train_semi_from_mol_clean.pkl", 'rb'))
+        data_list1 = pickle.load(open("work/train_semi_from_smiles_clean.pkl", 'rb'))
+        data_list = data_list0 + data_list1
         train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
         train, valid = InMemoryDataset(train), InMemoryDataset(valid)
 
@@ -216,7 +218,7 @@ weight_decay = 1e-5
 max_bearable_epoch = 5
 max_epoch = 50
 
-trial('visnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaust', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
+trial('visnet_hs80_l6_rbf32_lm2_pt_on_train_mol+smiles', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
 
 
 

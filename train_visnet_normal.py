@@ -57,36 +57,63 @@ class GEMData_mmff(object):
             'N': len(self.label)
         }
 
-data = GEMData_mmff('data/train.csv', 'data/train.sdf', label_name='label')
+# data = GEMData_mmff('data/cleaned_train_success_opt.csv', 'data/cleaned_train_success_opt.sdf', label_name='label')
 # label_stat = data.get_label_stat()
 # print(f'label_stat: {label_stat}')
 # label_mean = label_stat['mean']
 # label_std = label_stat['std']
-data.to_data_list(save_name='train_semi_from_mol_exhaust', num_worker=40)
+# data.to_data_list(save_name='train_semi_success_opt', num_worker=40)
+
+# def get_data_loader(mode, batch_size=256):
+#     collate_fn = DownstreamCollateFn()
+#     if mode == 'train':
+#         data_list = pickle.load(open("work/train_semi_success_opt.pkl", 'rb'))
+#         train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
+#         train, valid = InMemoryDataset(train), InMemoryDataset(valid)
+
+#         print(f'len train is {len(train)}, len valid is {len(valid)}')
+
+#         train_dl = train.get_data_loader(batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+#         valid_dl = valid.get_data_loader(batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+#         #collate_fn 把数据转换成atom_bond_graph, bond_angle_graph, np.array(compound_class_list, dtype=np.float32)
+
+#         return train_dl, valid_dl
+#     elif mode == 'test':
+#         # data_list = pickle.load(open("work/test_rdkit_3Dplus_2D_wH.pkl", 'rb'))
+
+#         # print(f'len test is {len(data_list)}')
+
+#         # test = InMemoryDataset(data_list)
+#         # test_dl = test.get_data_loader(batch_size=batch_size, shuffle=False)
+#         # return test_dl
+#         return ValueError("This is a training script")
 
 def get_data_loader(mode, batch_size=256):
     collate_fn = DownstreamCollateFn()
+    
     if mode == 'train':
-        data_list = pickle.load(open("work/train_semi_from_mol_exhaust.pkl", 'rb'))
-        train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
+        data_list0 = pickle.load(open("work/train_semi_from_mol_clean.pkl", 'rb'))
+        data_list1 = pickle.load(open("work/train_semi_from_smiles_clean.pkl", 'rb'))
+        data_list = data_list0 + data_list1
+        # train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
+        from collections import defaultdict
+        grouped_data = defaultdict(list)
+        for item in data_list:
+            grouped_data[item['Smiles']].append(item)
+
+        # 分组抽样
+        train_keys, valid_keys = train_test_split(list(grouped_data.keys()), random_state=42, test_size=0.1)
+
+        # 从分组中提取训练集和验证集
+        train = [item for key in train_keys for item in grouped_data[key]]
+        valid = [item for key in valid_keys for item in grouped_data[key]]
+        
+        print(f'len train is {len(train)}, len valid is {len(valid)}', flush=True)
         train, valid = InMemoryDataset(train), InMemoryDataset(valid)
-
-        print(f'len train is {len(train)}, len valid is {len(valid)}')
-
         train_dl = train.get_data_loader(batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
         valid_dl = valid.get_data_loader(batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-        #collate_fn 把数据转换成atom_bond_graph, bond_angle_graph, np.array(compound_class_list, dtype=np.float32)
 
         return train_dl, valid_dl
-    elif mode == 'test':
-        # data_list = pickle.load(open("work/test_rdkit_3Dplus_2D_wH.pkl", 'rb'))
-
-        # print(f'len test is {len(data_list)}')
-
-        # test = InMemoryDataset(data_list)
-        # test_dl = test.get_data_loader(batch_size=batch_size, shuffle=False)
-        # return test_dl
-        return ValueError("This is a training script")
     
 def evaluate(model, dataloader):
     """评估模型"""
@@ -110,17 +137,17 @@ def evaluate(model, dataloader):
 
     return metric_eval
 
-def trial(model_version, batch_size, lr,  tmax, weight_decay, max_bearable_epoch, max_epoch):
+def trial(model_version, train_config, model_config):
 
-    train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=batch_size)   
+    train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=train_config['batch_size'])   
     
-    representation_model = visnet.ViSNetBlock(lmax=2,
+    representation_model = visnet.ViSNetBlock(lmax=model_config['lmax'],
         vecnorm_type='none',
         trainable_vecnorm=False,
         num_heads=8,
-        num_layers=6,
-        hidden_channels=80,
-        num_rbf=32,
+        num_layers=model_config['num_layers'],
+        hidden_channels=model_config['hidden_channels'],
+        num_rbf=model_config['num_rbf'],
         rbf_type="expnorm",
         trainable_rbf=False,
         activation="silu",
@@ -129,7 +156,7 @@ def trial(model_version, batch_size, lr,  tmax, weight_decay, max_bearable_epoch
         max_num_neighbors=32)
     
     output_model = visnet_output_modules.EquivariantScalar(
-       hidden_channels=80,out_channels=1
+       hidden_channels=model_config['hidden_channels'],out_channels=1
     )
 
     model = visnet.ViSNet(
@@ -142,38 +169,41 @@ def trial(model_version, batch_size, lr,  tmax, weight_decay, max_bearable_epoch
 
     print("parameter size:", calc_parameter_size(model.parameters()), flush=True)
 
-    # model_path = 'pretrain_weight/visnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaustvisnet_hs80_l6_rbf32_lm2_pt_on_train_mol_exhaust1.pkl'
+    # model_path = '/home/chenmingan/workplace/paddle/terpenoid-paddle/pretrain_weight/visnet_hs80_l6_rbf32_lm2_pt_on_train_mol+smiles/visnet_hs80_l6_rbf32_lm2_pt_on_train_mol+smiles1.pkl'
     # model.set_state_dict(paddle.load(model_path))
     # print('Load state_dict from %s' % model_path, flush=True)
 
-    lr = optimizer.lr.CosineAnnealingDecay(learning_rate=lr, T_max=tmax)
-    opt = optimizer.Adam(lr, parameters=model.parameters(), weight_decay=weight_decay)
+    # lr = optimizer.lr.CosineAnnealingDecay(learning_rate=lr, T_max=tmax)
+    lr = optimizer.lr.ReduceOnPlateau(learning_rate=train_config['lr'], mode='min', factor=0.5, patience=10)
+    opt = optimizer.Adam(lr, parameters=model.parameters(), weight_decay=train_config['weight_decay'])
    
     best_score = 1e9
     best_epoch = 0
     best_train_metric = {}
     best_valid_metric = {}
-    criterion = nn.MSELoss()
-    for epoch in range(max_epoch):
+    # criterion = nn.MSELoss()
+    criterion = nn.SmoothL1Loss()
+    # 可以尝试SmoothL1Loss
+    for epoch in range(train_config['max_epoch']):
         model.train()
         for batch_idx,(atom_bond_graph, bond_angle_graph, label_true) in enumerate(train_data_loader):
            
             output = model(atom_bond_graph.tensor())
             label_true = paddle.to_tensor(label_true, dtype=paddle.float32).unsqueeze(axis=1)
             loss = criterion(output, label_true)
-            print(f"Epoch [{epoch + 1}/{max_epoch}], Batch [{batch_idx}], Loss: {loss.numpy()}")
+            print(f"Epoch [{epoch + 1}/{train_config['max_epoch']}], Batch [{batch_idx}], Loss: {loss.numpy()}")
             loss.backward() 
             opt.step()
             opt.clear_grad()
             
-        lr.step() 
+        
 
         # 评估模型在训练集、验证集的表现
         train_metric = evaluate(model, train_data_loader)
         valid_metric = evaluate(model, valid_data_loader)
-
+        
         score = valid_metric['RMSE']
-
+        lr.step(score)
         if score < best_score:
             # 保存score最大时的模型权重
             paddle.save(model.state_dict(), "weight/"+model_version+".pkl")
@@ -188,7 +218,7 @@ def trial(model_version, batch_size, lr,  tmax, weight_decay, max_bearable_epoch
         print(f'current_best_score: {best_score:.4f}, best_epoch: {best_epoch}', flush = True)
         print('=================================================')
 
-        if epoch > best_epoch + max_bearable_epoch or epoch == max_epoch - 1:
+        if epoch > best_epoch + train_config['max_bearable_epoch'] or epoch == train_config['max_epoch'] - 1:
             print(f"model_{model_version} is Done!!", flush = True)
             print('train', flush = True)
             print(best_train_metric)
@@ -207,14 +237,25 @@ paddle.seed(SEED)
 np.random.seed(SEED)
 random.seed(SEED)
 
-batch_size = 32           
-lr = 1e-4
-tmax = 15
-weight_decay = 1e-5
-max_bearable_epoch = 50
-max_epoch = 1000
+model_config = {
+    'lmax': 2,
+    'num_layers': 6,
+    'num_rbf': 64,
+    'hidden_channels': 128
+}
 
-trial('visnet_hs80_l6_rbf32_lm2_bs32_lr1e-4_mol_exhaust_scratch', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
+train_config = {
+    'batch_size': 32,
+    'lr': 1e-4,
+    'tmax': 15,
+    'weight_decay': 1e-5,
+    'max_bearable_epoch': 100,
+    'max_epoch': 1000
+}
+
+model_version = f'visnet_hs{model_config["hidden_channels"]}_l{model_config["num_layers"]}_rbf{model_config["num_rbf"]}_lm{model_config["lmax"]}_bs{train_config["batch_size"]}_lr{train_config["lr"]}_mol+smiles_smL1loss_rop_groupbysmiles_from_scratch'
+
+trial(model_version, train_config, model_config)
 
 
 

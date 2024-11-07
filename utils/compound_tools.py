@@ -448,39 +448,32 @@ class Compound3DKit(object):
             conf = new_mol.GetConformer()
         else:
             try:
-                #secondly, embed the mol with 2d coords before add hs, then optimize
+                #secondly, embed the mol with 2d coords after add hs, then optimize
                 new_mol = deepcopy(mol)
                 smiles = Chem.MolToSmiles(new_mol)
                 new_mol = Chem.MolFromSmiles(smiles)
-                new_mol = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs)
-                new_mol = Chem.AddHs(new_mol, addCoords=True)
+                new_mol = Chem.AddHs(new_mol)
+                res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, enforceChirality=False, randomSeed=42, maxAttempts=100)
                 res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
                 index = np.argmin([x[1] for x in res])
                 energy = res[index][1]
                 conf = new_mol.GetConformer(id=int(index))
             except:
                 try:
-                    #thirdly, embed without optimize after add H
                     new_mol = deepcopy(mol)
                     smiles = Chem.MolToSmiles(new_mol)
                     new_mol = Chem.MolFromSmiles(smiles)
-                    new_mol = Chem.AddHs(new_mol)
-                    new_mol = AllChem.EmbedMolecule(new_mol)
-                    conf = new_mol.GetConformer()
+                    res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, enforceChirality=False, randomSeed=42, maxAttempts=1000)
+                    new_mol = Chem.AddHs(new_mol, addCoords=True)
+                    res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
+                    index = np.argmin([x[1] for x in res])
+                    energy = res[index][1]
+                    conf = new_mol.GetConformer(id=int(index))
                 except:
-                    try:
-                        #fourthly, embed without optimize before add H
-                        new_mol = deepcopy(mol)
-                        smiles = Chem.MolToSmiles(new_mol)
-                        new_mol = Chem.MolFromSmiles(smiles)
-                        new_mol = AllChem.EmbedMolecule(new_mol)
-                        new_mol = Chem.AddHs(new_mol, addCoords=True)
-                        conf = new_mol.GetConformer()
-                    except:
-                        # last approach, use 2D coords
-                        new_mol = deepcopy(mol)
-                        conf = new_mol.GetConformer()
-
+                    # last approach, use 2D coords
+                    print("Warning: use 2D coords, which should not happen when dealing with clean data")
+                    new_mol = deepcopy(mol)
+                    conf = new_mol.GetConformer()
         atom_poses = Compound3DKit.get_atom_poses(new_mol, conf)
         
         return new_mol, atom_poses

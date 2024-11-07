@@ -107,7 +107,7 @@ model = visnet.ViSNet(
     std=None,
 )
 
-model.set_state_dict(paddle.load('/home/chenmingan/workplace/paddle/terpenoid_perliminary/weight/model_visnet_pre_on_train_embed80_epoch49.pkl'))
+model.set_state_dict(paddle.load('/home/chenmingan/workplace/paddle/terpenoid-paddle/weight/visnet_hs80_l6_rbf32_lm2_bs32_lr1e-4_allopt_smL1loss_rop_yood5%.pkl'))
 
 model.eval()
 y_pred = np.array([])
@@ -115,7 +115,7 @@ for (atom_bond_graph, bond_angle_graph, _) in test_dl:
     output = model(atom_bond_graph.tensor())
     y_pred = np.concatenate((y_pred, output[:, 0].cpu().numpy()))
 
-test_df = pd.read_csv('data/data285818/test.csv')
+test_df = pd.read_csv('/home/chenmingan/workplace/paddle/terpenoid-paddle/data/clean_valid_smiles5%.csv')
 test_df['pred'] = y_pred
 test_df.to_csv('visnet_pre_on_train_embed80_epoch49.csv', index=False)
 
