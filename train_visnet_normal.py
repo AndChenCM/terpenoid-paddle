@@ -239,9 +239,9 @@ random.seed(SEED)
 
 model_config = {
     'lmax': 2,
-    'num_layers': 6,
-    'num_rbf': 64,
-    'hidden_channels': 128
+    'num_layers': 8,
+    'num_rbf': 32,
+    'hidden_channels': 80
 }
 
 train_config = {
@@ -249,7 +249,7 @@ train_config = {
     'lr': 1e-4,
     'tmax': 15,
     'weight_decay': 1e-5,
-    'max_bearable_epoch': 100,
+    'max_bearable_epoch': 50,
     'max_epoch': 1000
 }
 
