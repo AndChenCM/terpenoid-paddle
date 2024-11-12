@@ -25,7 +25,7 @@ from rdkit.Chem import AllChem
 from rdkit.Chem import rdchem
 from openbabel import openbabel
 from .compound_constants import DAY_LIGHT_FG_SMARTS_LIST
-
+import paddle
 
 def get_gasteiger_partial_charges(mol, n_iter=12):
     """
@@ -300,7 +300,26 @@ class CompoundKit(object):
 
     @staticmethod
     def get_daylight_functional_group_counts(mol):
-        """get daylight functional group counts"""
+        """Get daylight functional group counts as a Paddle tensor."""
+
+        day_light_fg_mo_list = [Chem.MolFromSmarts(smarts) for smarts in DAY_LIGHT_FG_SMARTS_LIST]
+        num_atoms = mol.GetNumAtoms()
+        
+        # 初始化一个长度为原子数的零列表，用来记录每个原子匹配到的基团索引
+        fg_counts = [0] * num_atoms
+        
+        # 遍历每个SMARTS基团
+        for j, fg_mol in enumerate(day_light_fg_mo_list):
+            sub_structs = Chem.Mol.GetSubstructMatches(mol, fg_mol, uniquify=True)
+            
+            # 遍历所有匹配的子结构
+            for match in sub_structs:
+                for atom_idx in match:
+                    fg_counts[atom_idx] = j + 1  # 将匹配的原子标记为该基团的索引 (基团从1开始编号)
+        #import logging
+        #logging.debug(print(fg_counts))
+        return fg_counts
+
         fg_counts = []
         for fg_mol in CompoundKit.day_light_fg_mo_list:
             sub_structs = Chem.Mol.GetSubstructMatches(mol, fg_mol, uniquify=True)
@@ -488,7 +507,7 @@ class Compound3DKit(object):
             res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs)
 
             res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
-            # new_mol = Chem.RemoveHs(new_mol)
+            #new_mol = Chem.RemoveHs(new_mol)
             index = np.argmin([x[1] for x in res])
             energy = res[index][1]
             conf = new_mol.GetConformer(id=int(index))
