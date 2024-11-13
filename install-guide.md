@@ -13,7 +13,7 @@ mamba install openbabel
 mamba create -n paddle_py310 python==3.10 rdkit==2024.3.5
 mamba install cudatoolkit==11.8 -c conda-forge
 mamba install -c nvidia/label/cuda-11.8.0 cuda-nvcc cuda-libraries-dev cudnn
-pip install paddlepaddle-gpu==2.5.2 -f https://www.paddlepaddle.org.cn/whl/linux/mkl/avx/stable.html
+pip install paddlepaddle-gpu==2.5.0.post118 -f https://www.paddlepaddle.org.cn/whl/linux/mkl/avx/stable.html
 pip install seaborn scikit-learn==1.3.1 scipy numpy==1.26.0 protobuf "urllib3<2.0" ml_collections tensorboardX
 pip install cython
 wget https://github.com/PaddlePaddle/PGL/archive/refs/tags/2.2.5.zip

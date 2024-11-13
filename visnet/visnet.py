@@ -10,6 +10,7 @@ from pgl.message import Message
 from .visnet_utils import \
 (
     AtomEncoder,
+    FgEncoder,
     BondEncoder,
     CosineCutoff,
     rbf_class_mapping,
@@ -434,13 +435,15 @@ class ViSNet(nn.Layer):
             reduce_op="sum",
             mean=None,
             std=None,
+            use_fg=False,
     ):
         super().__init__()
         self.representation_model = representation_model
         self.output_model = output_model
-
+        self.use_fg = use_fg
         self.reduce_op = reduce_op
-
+        if self.use_fg:
+            self.fg_embedding = FgEncoder(self.representation_model.hidden_channels)
         mean = paddle.to_tensor(0) if mean is None else mean
         self.register_buffer("mean", mean)
         std = paddle.to_tensor(1) if std is None else std
@@ -454,6 +457,41 @@ class ViSNet(nn.Layer):
 
     def forward(self, graph: pgl.Graph):
         x, v = self.representation_model(graph)
+        if self.use_fg:
+            fg = self.fg_embedding(graph.node_feat)
+            x = self.attention(x, fg)
         x = self.output_model.pre_reduce(x, v)
         x = pgl.math.segment_pool(x, graph.graph_node_id, pool_type=self.reduce_op)
         return x
+    
+    def attention(self, x, fg,):
+        """
+        Perform attention between x and fg after pooling fg.
+        
+        Args:
+            x (Tensor): Input features (batch_size, hidden_channels)
+            fg (Tensor): Functional group features (batch_size, fg_channels)
+        
+        Returns:
+            Tensor: The updated features after attention.
+        """
+        #import logging
+        #logging.debug(print(paddle.transpose(fg, perm=[1, 0]).shape))
+        # Calculate attention scores (dot-product attention as an example)
+        if not isinstance(fg, paddle.Tensor):
+            fg = paddle.to_tensor(fg) 
+        if not isinstance(x, paddle.Tensor):
+            x = paddle.to_tensor(x) 
+       
+        attention_scores = paddle.matmul(x,  paddle.transpose(fg, perm=[1, 0]))  # Shape: [batch_size, hidden_channels]
+        
+        # Apply softmax to get attention weights
+        attention_weights = F.softmax(attention_scores, axis=-1)  # Shape: [batch_size, hidden_channels]
+        
+        # Weighted sum of fg features (no need for bmm since both are 2D)
+        fg_weighted = paddle.matmul(attention_weights, fg)  # Shape: [batch_size, hidden_channels]
+        
+        # # Combine x and the attended fg
+        # attended_x =  fg_weighted  # The final attended features
+
+        return fg_weighted

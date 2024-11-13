@@ -203,12 +203,12 @@ class DownstreamCollateFn(object):
             #data['Bl_node_j'] = np.array(data['edges'][:, 1])
             #data['Bl_bond_length'] = np.array(data['bond_length'])
 
-            node_i, node_j, node_k, bond_angles = \
-                self.get_pretrain_bond_angle(data['edges'], data['atom_pos'])
-            data['Ba_node_i'] = node_i
-            data['Ba_node_j'] = node_j
-            data['Ba_node_k'] = node_k
-            data['Ba_bond_angle'] = bond_angles
+            # node_i, node_j, node_k, bond_angles = \
+            #     self.get_pretrain_bond_angle(data['edges'], data['atom_pos'])
+            # data['Ba_node_i'] = node_i
+            # data['Ba_node_j'] = node_j
+            # data['Ba_node_k'] = node_k
+            # data['Ba_bond_angle'] = bond_angles
             
 
             N = len(data[self.atom_names[0]])

@@ -45,6 +45,7 @@ allowable_features = {
     'possible_bond_dir_list': list(range(1, 50)), 
     'possible_bond_type_list' : rdchem_enum_to_list(rdchem.BondType.values),
     'possible_is_in_ring_list': [1,2,3,4,5,6,7], 
+    'possible_daylight_fg': list(range(1, 127)) + ['misc'],
     #'possible_bond_length_list': [float],
 }
 
@@ -100,6 +101,7 @@ def get_atom_feature_dims():
         hybridization=len(allowable_features['possible_hybridization_list']) + 1,
         is_aromatic=len(allowable_features['possible_is_aromatic_list']) + 1,
         atom_is_in_ring=len(allowable_features['possible_is_in_ring_list']) + 1,
+        daylight_fg=len(allowable_features['possible_daylight_fg']) + 1,
     )
 
 # def bond_to_feature_vector(bond):
@@ -226,6 +228,32 @@ class AtomEncoder(nn.Layer):
 
         return x_embedding
 
+class FgEncoder(nn.Layer):
+
+    def __init__(self, emb_dim):
+        super().__init__()
+        
+        self.atom_embedding_list = nn.LayerDict()
+        self.feature_list = [
+            'daylight_fg'
+        ]
+
+        for key, dim in full_atom_feature_dims.items():
+            emb = nn.Embedding(dim, emb_dim)
+            nn.initializer.XavierUniform(emb.weight)
+            self.atom_embedding_list[key] = emb
+
+    def forward(self, node_feat: dict):
+        x_embedding = 0
+        #import logging
+        #logging.debug(print('node_feat',node_feat['daylight_fg'].shape))
+        for key in node_feat.keys():
+            if key in self.feature_list:
+            
+                x_embedding += self.atom_embedding_list[key](node_feat[key])
+        
+        #logging.debug(print(x_embedding.shape))
+        return x_embedding
 
 class BondEncoder(nn.Layer):
     

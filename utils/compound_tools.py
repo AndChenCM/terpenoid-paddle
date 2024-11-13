@@ -300,15 +300,36 @@ class CompoundKit(object):
         return [int(b) for b in fp.ToBitString()]
 
     ### functional groups
-
     @staticmethod
-    def get_daylight_functional_group_counts(mol):
-        """get daylight functional group counts"""
-        fg_counts = []
-        for fg_mol in CompoundKit.day_light_fg_mo_list:
+    def get_daylight_functional_group(mol):
+        """Get daylight functional group counts as a Paddle tensor."""
+
+        day_light_fg_mo_list = [Chem.MolFromSmarts(smarts) for smarts in DAY_LIGHT_FG_SMARTS_LIST]
+        num_atoms = mol.GetNumAtoms()
+        
+        # 初始化一个长度为原子数的零列表，用来记录每个原子匹配到的基团索引
+        fg = [0] * num_atoms
+        
+        # 遍历每个SMARTS基团
+        for j, fg_mol in enumerate(day_light_fg_mo_list):
             sub_structs = Chem.Mol.GetSubstructMatches(mol, fg_mol, uniquify=True)
-            fg_counts.append(len(sub_structs))
-        return fg_counts
+            
+            # 遍历所有匹配的子结构
+            for match in sub_structs:
+                for atom_idx in match:
+                    fg[atom_idx] = j + 1  # 将匹配的原子标记为该基团的索引 (基团从1开始编号)
+        #import logging
+        #logging.debug(print(fg_counts))
+        return fg
+
+    # @staticmethod
+    # def get_daylight_functional_group_counts(mol):
+    #     """get daylight functional group counts"""
+    #     fg_counts = []
+    #     for fg_mol in CompoundKit.day_light_fg_mo_list:
+    #         sub_structs = Chem.Mol.GetSubstructMatches(mol, fg_mol, uniquify=True)
+    #         fg_counts.append(len(sub_structs))
+    #     return fg_counts
 
     @staticmethod
     def get_ring_size(mol):
@@ -447,33 +468,34 @@ class Compound3DKit(object):
             opt = AllChem.MMFFOptimizeMolecule(new_mol)
             conf = new_mol.GetConformer()
         else:
-            try:
-                #secondly, embed the mol with 2d coords after add hs, then optimize
-                new_mol = deepcopy(mol)
-                smiles = Chem.MolToSmiles(new_mol)
-                new_mol = Chem.MolFromSmiles(smiles)
-                new_mol = Chem.AddHs(new_mol)
-                res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, enforceChirality=False, randomSeed=42, maxAttempts=100)
-                res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
-                index = np.argmin([x[1] for x in res])
-                energy = res[index][1]
-                conf = new_mol.GetConformer(id=int(index))
-            except:
-                try:
-                    new_mol = deepcopy(mol)
-                    smiles = Chem.MolToSmiles(new_mol)
-                    new_mol = Chem.MolFromSmiles(smiles)
-                    res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, enforceChirality=False, randomSeed=42, maxAttempts=1000)
-                    new_mol = Chem.AddHs(new_mol, addCoords=True)
-                    res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
-                    index = np.argmin([x[1] for x in res])
-                    energy = res[index][1]
-                    conf = new_mol.GetConformer(id=int(index))
-                except:
-                    # last approach, use 2D coords
-                    print("Warning: use 2D coords, which should not happen when dealing with clean data")
-                    new_mol = deepcopy(mol)
-                    conf = new_mol.GetConformer()
+            return ValueError("All z are zero, which should not happen when dealing with clean data")
+            # try:
+            #     #secondly, embed the mol with 2d coords after add hs, then optimize
+            #     new_mol = deepcopy(mol)
+            #     smiles = Chem.MolToSmiles(new_mol)
+            #     new_mol = Chem.MolFromSmiles(smiles)
+            #     new_mol = Chem.AddHs(new_mol)
+            #     res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, enforceChirality=False, randomSeed=42, maxAttempts=100)
+            #     res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
+            #     index = np.argmin([x[1] for x in res])
+            #     energy = res[index][1]
+            #     conf = new_mol.GetConformer(id=int(index))
+            # except:
+            #     try:
+            #         new_mol = deepcopy(mol)
+            #         smiles = Chem.MolToSmiles(new_mol)
+            #         new_mol = Chem.MolFromSmiles(smiles)
+            #         res = AllChem.EmbedMultipleConfs(new_mol, numConfs=numConfs, enforceChirality=False, randomSeed=42, maxAttempts=1000)
+            #         new_mol = Chem.AddHs(new_mol, addCoords=True)
+            #         res = AllChem.MMFFOptimizeMoleculeConfs(new_mol)
+            #         index = np.argmin([x[1] for x in res])
+            #         energy = res[index][1]
+            #         conf = new_mol.GetConformer(id=int(index))
+            #     except:
+            #         # last approach, use 2D coords
+            #         print("Warning: use 2D coords, which should not happen when dealing with clean data")
+            #         new_mol = deepcopy(mol)
+            #         conf = new_mol.GetConformer()
         atom_poses = Compound3DKit.get_atom_poses(new_mol, conf)
         
         return new_mol, atom_poses
@@ -617,7 +639,8 @@ def new_mol_to_graph_data(mol):
     data['morgan_fp'] = np.array(CompoundKit.get_morgan_fingerprint(mol), 'int64')
     # data['morgan2048_fp'] = np.array(CompoundKit.get_morgan2048_fingerprint(mol), 'int64')
     data['maccs_fp'] = np.array(CompoundKit.get_maccs_fingerprint(mol), 'int64')
-    data['daylight_fg_counts'] = np.array(CompoundKit.get_daylight_functional_group_counts(mol), 'int64')
+    # data['daylight_fg_counts'] = np.array(CompoundKit.get_daylight_functional_group_counts(mol), 'int64')
+    data['daylight_fg'] = np.array(CompoundKit.get_daylight_functional_group(mol), 'int64')
     return data
 
 
@@ -705,7 +728,8 @@ def mol_to_graph_data(mol):
     data['morgan_fp'] = np.array(CompoundKit.get_morgan_fingerprint(mol), 'int64')
     # data['morgan2048_fp'] = np.array(CompoundKit.get_morgan2048_fingerprint(mol), 'int64')
     data['maccs_fp'] = np.array(CompoundKit.get_maccs_fingerprint(mol), 'int64')
-    data['daylight_fg_counts'] = np.array(CompoundKit.get_daylight_functional_group_counts(mol), 'int64')
+    # data['daylight_fg_counts'] = np.array(CompoundKit.get_daylight_functional_group_counts(mol), 'int64')
+    data['daylight_fg'] = np.array(CompoundKit.get_daylight_functional_group(mol), 'int64')
     return data
 
 

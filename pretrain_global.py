@@ -63,10 +63,11 @@ class GEMData_mmff(object):
 def get_data_loader(mode, batch_size=128):
     collate_fn = DownstreamCollateFn()
     if mode == 'train':
-        data_list0 = pickle.load(open("work/train_semi_from_mol_clean.pkl", 'rb'))
-        data_list1 = pickle.load(open("work/train_semi_from_smiles_clean.pkl", 'rb'))
-        data_list = data_list0 + data_list1
-        train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
+        # data_list0 = pickle.load(open("work/train_semi_final_from_mol_clean_fg.pkl", 'rb'))
+        # data_list1 = pickle.load(open("work/train_semi_final_fg_clean.pkl", 'rb'))
+        # data_list = data_list0 + data_list1
+        data_list = pickle.load(open("work/train_semi_final_fg_clean.pkl", 'rb'))
+        train, valid = train_test_split(data_list, random_state=42, test_size=0.01)
         train, valid = InMemoryDataset(train), InMemoryDataset(valid)
 
         print(f'len train is {len(train)}, len valid is {len(valid)}', flush=True)
@@ -103,26 +104,26 @@ class DownstreamVisNet(nn.Layer):
         
         return loss
     
-def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch):
-    train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=batch_size) 
+def trial(model_version, train_config, model_config):
+    train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=train_config['batch_size']) 
     os.makedirs(f"pretrain_weight/{model_version}", exist_ok=True)
-    representation_model = visnet.ViSNetBlock(lmax=2,
+    representation_model = visnet.ViSNetBlock(lmax=model_config['lmax'],
         vecnorm_type='none',
         trainable_vecnorm=False,
         num_heads=8,
-        num_layers=6,
-        hidden_channels=80,
-        num_rbf=32,
+        num_layers=model_config['num_layers'],
+        hidden_channels=model_config['hidden_channels'],
+        num_rbf=model_config['num_rbf'],
         rbf_type="expnorm",
         trainable_rbf=False,
         activation="silu",
         attn_activation="silu",
         cutoff=5.0,
-        max_num_neighbors=32,)
+        max_num_neighbors=32)
    
    
     output_model =  visnet_output_modules.Pretrain_Output(
-       hidden_channels=240,out_channels=1
+       hidden_channels=3*model_config['hidden_channels'],out_channels=1
     )
 
     model = DownstreamVisNet(
@@ -136,15 +137,15 @@ def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch,
     #model.set_state_dict(paddle.load(model_path))
     #print('Load state_dict from %s' % model_path)
 
-    lr = optimizer.lr.CosineAnnealingDecay(learning_rate=lr, T_max=tmax)
-    opt = optimizer.Adam(lr, parameters=model.parameters(), weight_decay=weight_decay)
+    lr = optimizer.lr.CosineAnnealingDecay(learning_rate=train_config['lr'], T_max=train_config['tmax'])
+    opt = optimizer.Adam(lr, parameters=model.parameters(), weight_decay=train_config['weight_decay'])
    
     best_score = 1e9
     best_epoch = 0
     best_train_metric = {}
     best_valid_metric = {}
 
-    for epoch in range(max_epoch):
+    for epoch in range(train_config['max_epoch']):
         model.train()
         for batch_idx, (atom_bond_graph, _, feed_dict) in enumerate(train_data_loader):
             
@@ -152,7 +153,7 @@ def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch,
             # print(loss, flush=True)
             #  每隔100个批次打印一次损失
             if batch_idx % 100 == 0:
-               print(f"Epoch [{epoch + 1}/{max_epoch}], Batch [{batch_idx}], Loss: {loss.numpy()}", flush=True)
+               print(f"Epoch [{epoch + 1}/{train_config['max_epoch']}], Batch [{batch_idx}], Loss: {loss.numpy()}", flush=True)
             loss.backward() 
 
             opt.step()
@@ -182,7 +183,7 @@ def trial(model_version, batch_size, lr, tmax, weight_decay, max_bearable_epoch,
         print(f'current_best_score: {best_score:.4f}, best_epoch: {best_epoch}', flush=True)
         print('=================================================', flush=True)
         gc.collect()
-        if epoch > best_epoch + max_bearable_epoch or epoch == max_epoch - 1:
+        if epoch > best_epoch + train_config['max_bearable_epoch'] or epoch == train_config['max_epoch'] - 1:
             print(f"model_{model_version} is Done!!")
             print('train')
             print(best_train_metric)
@@ -211,14 +212,25 @@ paddle.seed(SEED)
 np.random.seed(SEED)
 random.seed(SEED)
 
-batch_size = 32          
-lr = 1e-3
-tmax = 15
-weight_decay = 1e-5
-max_bearable_epoch = 5
-max_epoch = 50
+model_config = {
+    'lmax': 2,
+    'num_layers': 6,
+    'num_rbf': 32,
+    'hidden_channels': 80
+}
 
-trial('visnet_hs80_l6_rbf32_lm2_pt_on_train_mol+smiles', batch_size, lr, tmax, weight_decay, max_bearable_epoch, max_epoch)
+train_config = {
+    'batch_size': 32,
+    'lr': 1e-4,
+    'tmax': 15,
+    'weight_decay': 1e-5,
+    'max_bearable_epoch': 5,
+    'max_epoch': 50
+}
+
+model_version = f'visnet_hs{model_config["hidden_channels"]}_l{model_config["num_layers"]}_rbf{model_config["num_rbf"]}_lm{model_config["lmax"]}_bs{train_config["batch_size"]}_lr{train_config["lr"]}_smiles-new_pt'
+
+trial(model_version, train_config, model_config)
 
 
 

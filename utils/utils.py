@@ -89,7 +89,7 @@ def mask_context_of_geognn_graph(
 class DownstreamCollateFn(object):
     def __init__(self, task_type='regr', is_inference=True):
         atom_names = ["atomic_num", "formal_charge", "degree", "chiral_tag", "total_numHs", "is_aromatic",
-                      "hybridization","atom_pos","explicit_valence"]
+                      "hybridization","atom_pos","explicit_valence", "daylight_fg"] #, "daylight_fg"
         bond_names = ["bond_dir", "bond_type", "is_in_ring"]
         bond_float_names = ["bond_length"]
         bond_angle_float_names = ["bond_angle"]
