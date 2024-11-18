@@ -88,27 +88,27 @@ class GEMData_mmff(object):
 #         # return test_dl
 #         return ValueError("This is a training script")
 
-def get_data_loader(mode, batch_size=256, split_seed=42):
-    collate_fn = DownstreamCollateFn()
+def get_data_loader(mode, batch_size=256, split_seed=42, use_fg=False):
+    collate_fn = DownstreamCollateFn(use_fg=use_fg)
     
     if mode == 'train':
-        data_list0 = pickle.load(open("work/train_semi_final_from_mol_clean_fg.pkl", 'rb'))
-        data_list1 = pickle.load(open("work/train_semi_from_smiles_2_fg_clean.pkl", 'rb'))
-        data_list = data_list0 + data_list1
-        # data_list = pickle.load(open("work/train_semi_final_from_mol_clean_fg.pkl", 'rb'))
+        # data_list0 = pickle.load(open("work/train_semi_final_from_mol_clean_fg.pkl", 'rb'))
+        # data_list1 = pickle.load(open("work/train_semi_from_smiles_clean.pkl", 'rb'))
+        # data_list = data_list0 + data_list1
         # data_list = pickle.load(open("work/train_semi_from_smiles_2_fg.pkl", 'rb'))
-        # train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
-        from collections import defaultdict
-        grouped_data = defaultdict(list)
-        for item in data_list:
-            grouped_data[item['Smiles']].append(item)
+        data_list = pickle.load(open("work/train_semi_final_from_mol_clean_fg.pkl", 'rb'))
+        train, valid = train_test_split(data_list, random_state=42, test_size=0.1)
+        # from collections import defaultdict
+        # grouped_data = defaultdict(list)
+        # for item in data_list:
+        #     grouped_data[item['Smiles']].append(item)
 
-        # 分组抽样
-        train_keys, valid_keys = train_test_split(list(grouped_data.keys()), random_state=split_seed, test_size=0.1)
+        # # 分组抽样
+        # train_keys, valid_keys = train_test_split(list(grouped_data.keys()), random_state=split_seed, test_size=0.1)
 
-        # 从分组中提取训练集和验证集
-        train = [item for key in train_keys for item in grouped_data[key]]
-        valid = [item for key in valid_keys for item in grouped_data[key]]
+        # # 从分组中提取训练集和验证集
+        # train = [item for key in train_keys for item in grouped_data[key]]
+        # valid = [item for key in valid_keys for item in grouped_data[key]]
         
         print(f'len train is {len(train)}, len valid is {len(valid)}', flush=True)
         train, valid = InMemoryDataset(train), InMemoryDataset(valid)
@@ -141,7 +141,7 @@ def evaluate(model, dataloader):
 
 def trial(model_version, train_config, model_config):
 
-    train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=train_config['batch_size'], split_seed = train_config['split_seed'])   
+    train_data_loader, valid_data_loader = get_data_loader(mode='train', batch_size=train_config['batch_size'], split_seed = train_config['split_seed'], use_fg=model_config['use_fg'])   
     
     representation_model = visnet.ViSNetBlock(lmax=model_config['lmax'],
         vecnorm_type='none',
@@ -154,8 +154,9 @@ def trial(model_version, train_config, model_config):
         trainable_rbf=False,
         activation="silu",
         attn_activation="silu",
-        cutoff=5.0,
-        max_num_neighbors=32)
+        cutoff=model_config['cutoff'],
+        max_num_neighbors=32,
+        use_fg=model_config['use_fg'])
     
     output_model = visnet_output_modules.EquivariantScalar(
        hidden_channels=model_config['hidden_channels'],out_channels=1
@@ -169,23 +170,33 @@ def trial(model_version, train_config, model_config):
         std=None,
         use_fg=model_config['use_fg']
     )
+    print(model, flush=True)
 
     print("parameter size:", calc_parameter_size(model.parameters()), flush=True)
 
-    model_path = '/home/chenmingan/workplace/paddle/terpenoid-paddle/pretrain_weight/visnet_hs64_l6_rbf64_lm2_bs32_lr0.001_mol+smiles-new_pt/visnet_hs64_l6_rbf64_lm2_bs32_lr0.001_mol+smiles-new_ptbest.pkl'
-    model.set_state_dict(paddle.load(model_path))
-    print('Load state_dict from %s' % model_path, flush=True)
-
-    lr = optimizer.lr.CosineAnnealingDecay(learning_rate=train_config['lr'], T_max=train_config['tmax'])
-    # lr = optimizer.lr.ReduceOnPlateau(learning_rate=train_config['lr'], mode='min', factor=0.5, patience=10)
+    # model_path = '/home/chenmingan/workplace/paddle/terpenoid-paddle/pretrain_weight/visnet_hs64_l6_rbf64_lm2_bs32_lr0.001_mol+smiles-new_pt/visnet_hs64_l6_rbf64_lm2_bs32_lr0.001_mol+smiles-new_ptbest.pkl'
+    # model.set_state_dict(paddle.load(model_path))
+    # print('Load state_dict from %s' % model_path, flush=True)
+    if train_config['lr_scheduler'] == 'cosine':
+        lr = optimizer.lr.CosineAnnealingDecay(learning_rate=train_config['lr'], T_max=train_config['tmax'])
+    elif train_config['lr_scheduler'] == 'reduce_on_plateau':
+        lr = optimizer.lr.ReduceOnPlateau(learning_rate=train_config['lr'], mode='min', factor=0.5, patience=10)
+    else:
+        raise ValueError("lr_scheduler should be cosine or reduce_on_plateau")
     opt = optimizer.Adam(lr, parameters=model.parameters(), weight_decay=train_config['weight_decay'])
    
     best_score = 1e9
     best_epoch = 0
     best_train_metric = {}
     best_valid_metric = {}
-    criterion = nn.MSELoss()
-    # criterion = nn.SmoothL1Loss()
+    if train_config['loss'] == 'mse':
+        criterion = nn.MSELoss()
+    elif train_config['loss'] == 'smoothl1':
+        criterion = nn.SmoothL1Loss()
+    elif train_config['loss'] == 'l1':
+        criterion = nn.L1Loss()
+    else:
+        raise ValueError("loss should be mse or smoothl1")
     # 可以尝试SmoothL1Loss
     for epoch in range(train_config['max_epoch']):
         model.train()
@@ -194,7 +205,8 @@ def trial(model_version, train_config, model_config):
             output = model(atom_bond_graph.tensor())
             label_true = paddle.to_tensor(label_true, dtype=paddle.float32).unsqueeze(axis=1)
             loss = criterion(output, label_true)
-            print(f"Epoch [{epoch + 1}/{train_config['max_epoch']}], Batch [{batch_idx}], Loss: {loss.numpy()}")
+            if batch_idx % 100 == 0:
+                print(f"Epoch [{epoch + 1}/{train_config['max_epoch']}], Batch [{batch_idx}], Loss: {loss.numpy()}", flush=True)
             loss.backward() 
             opt.step()
             opt.clear_grad()
@@ -245,7 +257,8 @@ model_config = {
     'num_layers': 6,
     'num_rbf': 64,
     'hidden_channels': 64,
-    'use_fg': True
+    'cutoff':5.0,
+    'use_fg': False
 }
 
 train_config = {
@@ -255,7 +268,9 @@ train_config = {
     'weight_decay': 1e-5,
     'max_bearable_epoch': 50,
     'max_epoch': 1000,
-    'split_seed': 42
+    'split_seed': 42,
+    'lr_scheduler': 'reduce_on_plateau',
+    'loss': 'smoothl1'
 }
 # seed: 42, 2024, 3407, 1128, 429
 
@@ -264,8 +279,9 @@ train_config = {
 model_version = (
     f'visnet_hs{model_config["hidden_channels"]}_l{model_config["num_layers"]}_'
     f'rbf{model_config["num_rbf"]}_lm{model_config["lmax"]}_'
-    f'bs{train_config["batch_size"]}_lr{train_config["lr"]}_'
-    f'smiles_new+mol_fg_seed{train_config["split_seed"]}_ft_epbest_new'
+    f'bs{train_config["batch_size"]}_lr{train_config["lr"]}_cutoff{model_config["cutoff"]}_'
+    f'fg_{model_config['use_fg']}_seed_{train_config["split_seed"]}_lrscheduler_'
+    f'{train_config["lr_scheduler"]}_loss_{train_config["loss"]}_data_mol_from_scratch'
 )
 
 

@@ -105,6 +105,7 @@ class ViSNetBlock(nn.Layer):
         attn_activation="silu",
         cutoff=5.0,
         max_num_neighbors=32,
+        use_fg = False
     ):
         super().__init__()
         self.lmax = lmax
@@ -122,6 +123,9 @@ class ViSNetBlock(nn.Layer):
         self.max_num_neighbors = max_num_neighbors
 
         self.atom_embedding = AtomEncoder(hidden_channels)
+        self.use_fg = use_fg
+        if self.use_fg:
+            self.fg_embedding = FgEncoder(hidden_channels)
         self.bond_embedding = BondEncoder(hidden_channels)
         
         self.sphere = Sphere(l=lmax)
@@ -170,6 +174,8 @@ class ViSNetBlock(nn.Layer):
 
         # Embedding Layers
         x = self.atom_embedding(node_feat)
+        if self.use_fg:
+            fg = self.fg_embedding(node_feat)
         edge_attr = self.bond_embedding(edge_feat)
 
         edge_vec = pos[edge_index[0]] - pos[edge_index[1]]
@@ -197,21 +203,18 @@ class ViSNetBlock(nn.Layer):
         
         # ViS-MP Layers
         for attn in self.vis_mp_layers:
-            
             dx, dvec = attn(vis_graph)
-            if paddle.isnan(dx).any() or paddle.isnan(dvec).any():
-                print("NaN values detected in dx or dvec")
-
             x = x + dx
             vec = vec + dvec
             vis_graph.node_feat['x'] = x
             vis_graph.node_feat['vec'] = vec
-        # import pdb; pdb.set_trace()    
+
         x = self.out_norm(x)
         vec = self.vec_out_norm(vec)
-
-        return x, vec
-
+        if self.use_fg:
+            return x, vec, fg
+        else:
+            return x, vec
 
 class ViS_MP(nn.Layer):
     
@@ -442,8 +445,6 @@ class ViSNet(nn.Layer):
         self.output_model = output_model
         self.use_fg = use_fg
         self.reduce_op = reduce_op
-        if self.use_fg:
-            self.fg_embedding = FgEncoder(self.representation_model.hidden_channels)
         mean = paddle.to_tensor(0) if mean is None else mean
         self.register_buffer("mean", mean)
         std = paddle.to_tensor(1) if std is None else std
@@ -456,10 +457,11 @@ class ViSNet(nn.Layer):
         self.output_model.reset_parameters()
 
     def forward(self, graph: pgl.Graph):
-        x, v = self.representation_model(graph)
         if self.use_fg:
-            fg = self.fg_embedding(graph.node_feat)
+            x, v, fg = self.representation_model(graph)
             x = self.attention(x, fg)
+        else:
+            x, v = self.representation_model(graph)
         x = self.output_model.pre_reduce(x, v)
         x = pgl.math.segment_pool(x, graph.graph_node_id, pool_type=self.reduce_op)
         return x
@@ -475,23 +477,22 @@ class ViSNet(nn.Layer):
         Returns:
             Tensor: The updated features after attention.
         """
-        #import logging
-        #logging.debug(print(paddle.transpose(fg, perm=[1, 0]).shape))
+        import logging
+        #logging.debug(print('x', x))
+        
         # Calculate attention scores (dot-product attention as an example)
-        if not isinstance(fg, paddle.Tensor):
-            fg = paddle.to_tensor(fg) 
-        if not isinstance(x, paddle.Tensor):
-            x = paddle.to_tensor(x) 
-       
+
         attention_scores = paddle.matmul(x,  paddle.transpose(fg, perm=[1, 0]))  # Shape: [batch_size, hidden_channels]
         
         # Apply softmax to get attention weights
         attention_weights = F.softmax(attention_scores, axis=-1)  # Shape: [batch_size, hidden_channels]
-        
+
+        #logging.debug(print('attention_weights', attention_weights))
+
         # Weighted sum of fg features (no need for bmm since both are 2D)
         fg_weighted = paddle.matmul(attention_weights, fg)  # Shape: [batch_size, hidden_channels]
         
-        # # Combine x and the attended fg
-        # attended_x =  fg_weighted  # The final attended features
-
-        return fg_weighted
+        # Combine x and the attended fg
+        attended_x =  fg_weighted  # The final attended features
+        #logging.debug(print('attended_x', attended_x))
+        return attended_x
