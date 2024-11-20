@@ -177,6 +177,7 @@ def trial(model_version, train_config, model_config):
     # model_path = '/home/chenmingan/workplace/paddle/terpenoid-paddle/pretrain_weight/visnet_hs64_l6_rbf64_lm2_bs32_lr0.001_mol+smiles-new_pt/visnet_hs64_l6_rbf64_lm2_bs32_lr0.001_mol+smiles-new_ptbest.pkl'
     # model.set_state_dict(paddle.load(model_path))
     # print('Load state_dict from %s' % model_path, flush=True)
+
     if train_config['lr_scheduler'] == 'cosine':
         lr = optimizer.lr.CosineAnnealingDecay(learning_rate=train_config['lr'], T_max=train_config['tmax'])
     elif train_config['lr_scheduler'] == 'reduce_on_plateau':
@@ -256,9 +257,9 @@ model_config = {
     'lmax': 2,
     'num_layers': 6,
     'num_rbf': 64,
-    'hidden_channels': 64,
+    'hidden_channels': 128,
     'cutoff':5.0,
-    'use_fg': False
+    'use_fg': True
 }
 
 train_config = {
@@ -270,7 +271,7 @@ train_config = {
     'max_epoch': 1000,
     'split_seed': 42,
     'lr_scheduler': 'reduce_on_plateau',
-    'loss': 'smoothl1'
+    'loss': 'mse'
 }
 # seed: 42, 2024, 3407, 1128, 429
 
@@ -280,7 +281,7 @@ model_version = (
     f'visnet_hs{model_config["hidden_channels"]}_l{model_config["num_layers"]}_'
     f'rbf{model_config["num_rbf"]}_lm{model_config["lmax"]}_'
     f'bs{train_config["batch_size"]}_lr{train_config["lr"]}_cutoff{model_config["cutoff"]}_'
-    f'fg_{model_config['use_fg']}_seed_{train_config["split_seed"]}_lrscheduler_'
+    f'fg_{model_config["use_fg"]}_seed_{train_config["split_seed"]}_lrscheduler_'
     f'{train_config["lr_scheduler"]}_loss_{train_config["loss"]}_data_mol_from_scratch'
 )
 

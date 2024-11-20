@@ -85,8 +85,13 @@ def predict(seed=42):
         mean=None,
         std=None,
     )
-
-    model.set_state_dict(paddle.load("/home/chenmingan/workplace/paddle/terpenoid-paddle/weight/visnet_hs80_l6_rbf32_lm2_bs32_lr1e-4_IDopt_smL1loss_rop_yood5%.pkl"))
+    ckpt = paddle.load("/home/chenmingan/workplace/paddle/terpenoid-paddle/weight/visnet_hs80_l6_rbf32_lm2_bs32_lr1e-4_IDopt_smL1loss_rop_yood5%.pkl")
+    new_state_dict = {}
+    for key, value in ckpt.items():
+        new_key = key.replace('daylight_fg_counts', 'daylight_fg')
+        new_state_dict[new_key] = value
+    
+    model.set_state_dict(ckpt)
 
     model.eval()
     y_pred = np.array([])
